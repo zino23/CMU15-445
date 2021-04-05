@@ -5,6 +5,11 @@
 #==============================================================================#
 # File extensions to be ignored anywhere in the tree.
 #==============================================================================#
+
+*md
+*.mdj
+compile_flags.txt
+.history
 # Temp files created by most text editors.
 *~
 # Merge files created by git.
