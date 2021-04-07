@@ -82,14 +82,10 @@ class Page {
   inline void RUnlatch() { rwlatch_.RUnlock(); }
 
   /** @return the page LSN. */
-  inline lsn_t GetLSN() {
-    return *reinterpret_cast<lsn_t *>(GetData() + OFFSET_LSN);
-  }
+  inline lsn_t GetLSN() { return *reinterpret_cast<lsn_t *>(GetData() + OFFSET_LSN); }
 
   /** Sets the page LSN. */
-  inline void SetLSN(lsn_t lsn) {
-    memcpy(GetData() + OFFSET_LSN, &lsn, sizeof(lsn_t));
-  }
+  inline void SetLSN(lsn_t lsn) { memcpy(GetData() + OFFSET_LSN, &lsn, sizeof(lsn_t)); }
 
  protected:
   static_assert(sizeof(page_id_t) == 4);

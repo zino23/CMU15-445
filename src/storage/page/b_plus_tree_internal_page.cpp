@@ -25,7 +25,21 @@ namespace bustub {
  * max page size
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id, int max_size) {}
+B_PLUS_TREE_INTERNAL_PAGE_TYPE::BPlusTreeInternalPage(page_id_t page_id, page_id_t parent_id, int max_size) {
+  Init(page_id, parent_id, max_size);
+
+  // allocate memory for key and values
+  keys_ = new KeyType[max_size_];
+  values_ = new ValueType[max_size_];
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id, int max_size) {
+  page_id_ = page_id;
+  parent_page_id_ = parent_id;
+  size_ = 0;
+  max_size_ = max_size;
+}
 /*
  * Helper method to get/set the key associated with input "index"(a.k.a
  * array offset)
@@ -33,12 +47,12 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id
 INDEX_TEMPLATE_ARGUMENTS
 KeyType B_PLUS_TREE_INTERNAL_PAGE_TYPE::KeyAt(int index) const {
   // replace with your own code
-  KeyType key{};
+  KeyType key{keys_[index]};
   return key;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) {}
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) { keys_[index] = key; }
 
 /*
  * Helper method to find and return array index(or offset), so that its value

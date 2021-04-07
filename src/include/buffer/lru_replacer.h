@@ -55,7 +55,7 @@ class LRUReplacer : public Replacer {
 
   size_t Size() override;
 
-  bool HasFrame(frame_id_t frame_id) override;
+  bool HasFrame(frame_id_t frame_id);
 
  private:
   // TODO(student): implement me!

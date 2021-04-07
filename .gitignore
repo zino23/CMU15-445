@@ -10,6 +10,7 @@
 *.mdj
 compile_flags.txt
 .history
+project*/
 # Temp files created by most text editors.
 *~
 # Merge files created by git.

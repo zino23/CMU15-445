@@ -35,6 +35,9 @@ namespace bustub {
 INDEX_TEMPLATE_ARGUMENTS
 class BPlusTreeInternalPage : public BPlusTreePage {
  public:
+  // constructor inside which Init() is called
+  BPlusTreeInternalPage(page_id_t page_id, page_id_t parent_id, int max_size);
+
   // must call initialize method after "create" a new node
   void Init(page_id_t page_id, page_id_t parent_id = INVALID_PAGE_ID, int max_size = INTERNAL_PAGE_SIZE);
 
@@ -62,5 +65,9 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void CopyLastFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
   void CopyFirstFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
   MappingType array[0];
+
+  // Keys of children and pointers to children
+  KeyType *keys_;
+  ValueType *values_;
 };
 }  // namespace bustub

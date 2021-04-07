@@ -17,12 +17,8 @@
 
 namespace bustub {
 
-BufferPoolManager::BufferPoolManager(size_t pool_size,
-                                     DiskManager *disk_manager,
-                                     LogManager *log_manager)
-    : pool_size_(pool_size),
-      disk_manager_(disk_manager),
-      log_manager_(log_manager) {
+BufferPoolManager::BufferPoolManager(size_t pool_size, DiskManager *disk_manager, LogManager *log_manager)
+    : pool_size_(pool_size), disk_manager_(disk_manager), log_manager_(log_manager) {
   // We allocate a consecutive memory space for the buffer pool.
   pages_ = new Page[pool_size_];
   replacer_ = new LRUReplacer(pool_size);
@@ -125,8 +121,7 @@ bool BufferPoolManager::FlushPageImpl(page_id_t page_id) {
   // Make sure you call DiskManager::WritePage!
 
   // TODO(improve) may not need to check invalid page id
-  if (page_id == INVALID_PAGE_ID ||
-      page_table_.find(page_id) == page_table_.end()) {
+  if (page_id == INVALID_PAGE_ID || page_table_.find(page_id) == page_table_.end()) {
     return false;
   }
   auto frame_id = page_table_[page_id];

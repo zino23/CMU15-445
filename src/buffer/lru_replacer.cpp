@@ -33,7 +33,7 @@ bool LRUReplacer::Victim(frame_id_t *frame_id) {
 
   // implement the clock policy
   auto pool_size = Size();
-  for (int i = 0; i < pool_size; i++) {
+  for (size_t i = 0; i < pool_size; i++) {
     // check reference bit
     auto victim = replacement_pool_[pointer_];
     if (is_referenced[victim]) {
