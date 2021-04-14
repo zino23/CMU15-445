@@ -23,8 +23,6 @@ LRUReplacer::LRUReplacer(size_t num_pages) {}
 
 LRUReplacer::~LRUReplacer() = default;
 
-bool LRUReplacer::HasFrame(frame_id_t frame_id) { return is_referenced.find(frame_id) != is_referenced.end(); }
-
 bool LRUReplacer::Victim(frame_id_t *frame_id) {
   // check if there are possile victims
   if (replacement_pool_.empty()) {
@@ -33,13 +31,15 @@ bool LRUReplacer::Victim(frame_id_t *frame_id) {
 
   // implement the clock policy
   auto pool_size = Size();
-  for (size_t i = 0; i < pool_size; i++) {
+  for (size_t i = 0; i <= pool_size; i++) {
     // check reference bit
     auto victim = replacement_pool_[pointer_];
     if (is_referenced[victim]) {
       is_referenced[victim] = false;
     } else {
       *frame_id = victim;
+      // call pin to remove the frame from replacement pool
+      Pin(*frame_id);
       return true;
     }
   }
@@ -47,16 +47,26 @@ bool LRUReplacer::Victim(frame_id_t *frame_id) {
 }
 
 void LRUReplacer::Pin(frame_id_t frame_id) {
+  // the replacer does not have the frame, just return
+  if (is_referenced.find(frame_id) == is_referenced.end()) {
+    return;
+  }
+
   // remove the frame from replacer
   is_referenced.erase(frame_id);
   for (auto iter = replacement_pool_.begin(); iter != replacement_pool_.end(); iter++) {
     if (*iter == frame_id) {
       replacement_pool_.erase(iter);
+      break;
     }
   }
 }
 
 void LRUReplacer::Unpin(frame_id_t frame_id) {
+  // if the unpinned frame is already in the replacer, simply return
+  if (is_referenced.find(frame_id) != is_referenced.end()) {
+    return;
+  }
   // add the unpinned frame into replacement_pool_
   replacement_pool_.push_back(frame_id);
   is_referenced[frame_id] = true;

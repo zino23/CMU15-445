@@ -38,12 +38,6 @@ class Page {
   /** Default destructor. */
   ~Page() = default;
 
-  /** Reset this page's metadata */
-  inline void ResetMetadata() {
-    pin_count_ = 0;
-    is_dirty_ = false;
-  }
-
   /** @return the actual data contained within this page */
   inline char *GetData() { return data_; }
 
@@ -55,12 +49,6 @@ class Page {
 
   /** @return the pin count of this page */
   inline int GetPinCount() { return pin_count_; }
-
-  /** Increment the pin count of this page */
-  inline void IncrementPinCount() { pin_count_++; }
-
-  /** Decrement the pin count of this page */
-  inline void DecrementPinCount() { pin_count_--; }
 
   /** @return true if the page in memory has been modified from the page on
    * disk, false otherwise */

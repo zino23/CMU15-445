@@ -100,6 +100,12 @@ class BufferPoolManager {
   /** @return size of the buffer pool */
   size_t GetPoolSize() { return pool_size_; }
 
+  /** @return size of free_list_ */
+  size_t GetFreeListSize() { return static_cast<size_t>(free_list_.size()); }
+
+  /** @return size of replacer_ */
+  size_t GetReplacerSize() { return replacer_->Size(); }
+
  protected:
   /**
    * Grading function. Do not modify!
@@ -159,6 +165,15 @@ class BufferPoolManager {
    */
   void FlushAllPagesImpl();
 
+  /** Reset the page's metadata */
+  void ResetMetadata(frame_id_t frame_id);
+
+  /** Increment the pin count of the page */
+  void IncrementPinCount(frame_id_t frame_id);
+
+  /** Decrement the pin count of this page */
+  void DecrementPinCount(frame_id_t frame_id);
+
   /** Number of pages in the buffer pool. */
   size_t pool_size_;
   /** Array of buffer pool pages. */
@@ -170,7 +185,7 @@ class BufferPoolManager {
   /** Page table for keeping track of buffer pool pages. */
   std::unordered_map<page_id_t, frame_id_t> page_table_;
   /** Replacer to find unpinned pages for replacement. */
-  LRUReplacer *replacer_;
+  Replacer *replacer_;
   /** List of free pages. Initially, no page is in memory, so free list contains
    * all the frames, i.e. the entries for pages_[] */
   std::list<frame_id_t> free_list_;

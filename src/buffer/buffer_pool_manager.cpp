@@ -14,6 +14,7 @@
 
 #include <list>
 #include <unordered_map>
+#include "common/config.h"
 
 namespace bustub {
 
@@ -38,8 +39,7 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
   // 1.     Search the page table for the requested page (P).
   // 1.1    If P exists, pin it and return it immediately.
   // 1.2    If P does not exist, find a replacement page (R) from either the
-  // free list or the replacer.
-  //        Note that pages are always found from the free list first.
+  // free list or the replacer. Note that pages are always found from the free list first.
   // 2.     If R is dirty, write it back to the disk.
   // 3.     Delete R from the page table and insert P.
   // 4.     Update P's metadata, read in the page content from disk, and then
@@ -47,14 +47,13 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
 
   // 1. Check is the page is in the memory
   auto page_it = page_table_.find(page_id);
+
   if (page_it != page_table_.end()) {
     // 1.1 Pin it and return
     frame_id_t frame_id = page_it->second;
     auto page = static_cast<Page *>(GetPages() + frame_id);
-    page->IncrementPinCount();
-    if (replacer_->HasFrame(frame_id)) {
-      replacer_->Pin(frame_id);
-    }
+    IncrementPinCount(frame_id);
+    replacer_->Pin(frame_id);
     return page;
   }
 
@@ -69,10 +68,8 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
     // update page table
     page_table_[page_id] = frame_id;
     // increment pin count, since the frame is chosen from free list, it cannot be in replacer
-    target_page->IncrementPinCount();
-    if (replacer_->HasFrame(frame_id)) {
-      replacer_->Pin(frame_id);
-    }
+    IncrementPinCount(frame_id);
+    replacer_->Pin(frame_id);
     return target_page;
   }
 
@@ -82,15 +79,18 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
     if (replacer_->Victim(&victim_frame_id)) {
       auto victim = static_cast<Page *>(GetPages() + victim_frame_id);
       auto victim_page_id = victim->GetPageId();
-      page_table_.erase(page_id);
+      page_table_.erase(victim_page_id);
       // if victim is dirty, flush it
       if (victim->IsDirty()) {
         FlushPageImpl(victim_page_id);
       }
+      victim->ResetMemory();
+      ResetMetadata(victim_frame_id);
       disk_manager_->ReadPage(page_id, victim->GetData());
       page_table_[page_id] = victim_frame_id;
-      victim->IncrementPinCount();
+      IncrementPinCount(victim_frame_id);
       replacer_->Pin(victim_frame_id);
+      victim->SetPageId(page_id);
       return victim;
     }
   }
@@ -106,7 +106,7 @@ bool BufferPoolManager::UnpinPageImpl(page_id_t page_id, bool is_dirty) {
       return false;
     }
     // decrement pin count
-    page->DecrementPinCount();
+    DecrementPinCount(frame_id);
     if (page->GetPinCount() == 0) {
       replacer_->Unpin(frame_id);
     }
@@ -142,33 +142,33 @@ Page *BufferPoolManager::NewPageImpl(page_id_t *page_id) {
   // the disk manager tracks. With this new page, we can read and write data to
   // and from it
 
-  auto page_it = GetPages();
+  auto page_iter = GetPages();
   bool all_pinned = true;
   // if there is free slot in the free list, put the newly created page in the
   // free slot
   if (!free_list_.empty()) {
     auto frame_id = free_list_.front();
-    page_id_t new_page_id = disk_manager_->AllocatePage();
+    free_list_.pop_front();
+    *page_id = disk_manager_->AllocatePage();
     // update metadata and page table
-    page_table_[new_page_id] = frame_id;
+    page_table_[*page_id] = frame_id;
     auto new_page = static_cast<Page *>(GetPages() + frame_id);
     new_page->ResetMemory();
-    new_page->ResetMetadata();
-    new_page->IncrementPinCount();
-    if (replacer_->HasFrame(frame_id)) {
-      replacer_->Pin(frame_id);
-    }
+    new_page->SetPageId(*page_id);
+    ResetMetadata(frame_id);
+    IncrementPinCount(frame_id);
+    replacer_->Pin(frame_id);
     return new_page;
   }
 
   // check if all the pages are pinned
   auto pool_size = GetPoolSize();
   for (size_t i = 0; i < pool_size; i++) {
-    if (page_it->GetPinCount() == 0) {
+    if (page_iter->GetPinCount() == 0) {
       all_pinned = false;
       break;
     }
-    page_it++;
+    page_iter++;
   }
 
   // all pages are pinned
@@ -178,17 +178,22 @@ Page *BufferPoolManager::NewPageImpl(page_id_t *page_id) {
 
   frame_id_t victim_frame_id;
   if (replacer_->Victim(&victim_frame_id)) {
-    auto new_page_id = disk_manager_->AllocatePage();
     auto victim_page = static_cast<Page *>(pages_ + victim_frame_id);
+    auto victim_page_id = victim_page->GetPageId();
     if (victim_page->IsDirty()) {
-      auto victim_page_id = victim_page->GetPageId();
       FlushPageImpl(victim_page_id);
     }
+    // remove fron page table
+    page_table_.erase(victim_page_id);
+
+    // allocate new page
+    *page_id = disk_manager_->AllocatePage();
+    victim_page->SetPageId(*page_id);
+    page_table_[*page_id] = victim_frame_id;
     victim_page->ResetMemory();
-    victim_page->ResetMetadata();
-    victim_page->IncrementPinCount();
+    ResetMetadata(victim_frame_id);
+    IncrementPinCount(victim_frame_id);
     replacer_->Pin(victim_frame_id);
-    victim_page->SetPageId(new_page_id);
     return victim_page;
   }
   return nullptr;
@@ -214,7 +219,7 @@ bool BufferPoolManager::DeletePageImpl(page_id_t page_id) {
     return false;
   }
   page_table_.erase(page_id);
-  page->ResetMetadata();
+  ResetMetadata(frame_id);
   free_list_.emplace_back(frame_id);
   // no need to call replacer_->Pin() cause when a page is pinned to a frame in free_list_, Pin() will be called then
   return true;
@@ -235,4 +240,19 @@ void BufferPoolManager::FlushAllPagesImpl() {
   }
 }
 
+void BufferPoolManager::ResetMetadata(frame_id_t frame_id) {
+  auto page = static_cast<Page *>(GetPages() + frame_id);
+  page->pin_count_ = 0;
+  page->is_dirty_ = false;
+}
+
+void BufferPoolManager::IncrementPinCount(frame_id_t frame_id) {
+  auto page = static_cast<Page *>(GetPages() + frame_id);
+  page->pin_count_++;
+}
+
+void BufferPoolManager::DecrementPinCount(frame_id_t frame_id) {
+  auto page = static_cast<Page *>(GetPages() + frame_id);
+  page->pin_count_--;
+}
 }  // namespace bustub

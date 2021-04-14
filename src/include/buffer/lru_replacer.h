@@ -27,12 +27,6 @@ namespace bustub {
  * LRUReplacer implements the lru replacement policy, which approximates the
  * Least Recently Used policy.
  */
-using Frame_t = struct Frame {
-  frame_id_t frame_id;
-  bool referenced;
-};
-using Frame_it = std::vector<Frame_t>::iterator;
-
 class LRUReplacer : public Replacer {
  public:
   /**
@@ -54,8 +48,6 @@ class LRUReplacer : public Replacer {
   void Unpin(frame_id_t frame_id) override;
 
   size_t Size() override;
-
-  bool HasFrame(frame_id_t frame_id);
 
  private:
   // TODO(student): implement me!
