@@ -29,20 +29,20 @@ namespace bustub {
  *
  * Internal page format (keys are stored in increasing order):
  *  --------------------------------------------------------------------------
- * | HEADER | KEY(1)+PAGE_ID(1) | KEY(2)+PAGE_ID(2) | ... | KEY(n)+PAGE_ID(n) |
+ * | HEADER | KEY(NULL) + PAGE_ID(0) | KEY(1)+PAGE_ID(1) | KEY(2)+PAGE_ID(2) | ... | KEY(n)+PAGE_ID(n) |
  *  --------------------------------------------------------------------------
  */
 INDEX_TEMPLATE_ARGUMENTS
 class BPlusTreeInternalPage : public BPlusTreePage {
  public:
-  // constructor inside which Init() is called
-  BPlusTreeInternalPage(page_id_t page_id, page_id_t parent_id, int max_size);
-
-  // must call initialize method after "create" a new node
+  // Every B+ Tree leaf/internal page corresponds to the data_ of bustub::Page. After fetching a page from buffer pool,
+  // the page is reinterpret_cast to a leaf/internal page. Must call initialize method after "creating" a new node
   void Init(page_id_t page_id, page_id_t parent_id = INVALID_PAGE_ID, int max_size = INTERNAL_PAGE_SIZE);
 
   KeyType KeyAt(int index) const;
   void SetKeyAt(int index, const KeyType &key);
+  void SetValueAt(int index, const ValueType &value);
+  void SetPairAt(int index, const MappingType &pair);
   int ValueIndex(const ValueType &value) const;
   ValueType ValueAt(int index) const;
 
@@ -60,14 +60,16 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void MoveLastToFrontOf(BPlusTreeInternalPage *recipient, const KeyType &middle_key,
                          BufferPoolManager *buffer_pool_manager);
 
+  // Helper functions
+  MappingType *GetItems() { return items_; }
+  bool IsFull() { return GetSize() >= GetMaxSize(); }
+
  private:
   void CopyNFrom(MappingType *items, int size, BufferPoolManager *buffer_pool_manager);
   void CopyLastFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
   void CopyFirstFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
-  MappingType array[0];
 
   // Keys of children and pointers to children
-  KeyType *keys_;
-  ValueType *values_;
+  MappingType items_[INTERNAL_PAGE_SIZE];
 };
 }  // namespace bustub

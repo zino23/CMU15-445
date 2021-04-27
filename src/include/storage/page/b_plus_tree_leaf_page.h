@@ -49,8 +49,13 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   page_id_t GetNextPageId() const;
   void SetNextPageId(page_id_t next_page_id);
   KeyType KeyAt(int index) const;
+  ValueType ValueAt(int index) const;
   int KeyIndex(const KeyType &key, const KeyComparator &comparator) const;
-  const MappingType &GetItem(int index);
+  const MappingType &GetItem(int index) const;
+  MappingType *GetItems() { return items_; }
+  void SetValueAt(int index, const ValueType &value) { items_[index].second = value; }
+  void SetItem(int index, const MappingType &item) { items_[index] = item; }
+  bool IsFull() { return GetSize() >= GetMaxSize(); }
 
   // insert and delete methods
   int Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator);
@@ -68,6 +73,6 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void CopyLastFrom(const MappingType &item);
   void CopyFirstFrom(const MappingType &item);
   page_id_t next_page_id_;
-  MappingType array[0];
+  MappingType items_[LEAF_PAGE_SIZE];
 };
 }  // namespace bustub
