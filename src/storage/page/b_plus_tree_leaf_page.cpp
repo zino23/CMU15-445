@@ -55,25 +55,26 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t next_page_id) { next_pa
  */
 INDEX_TEMPLATE_ARGUMENTS
 int B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(const KeyType &key, const KeyComparator &comparator) const {
-  // Binary search to find the biggest index i where KeyAt(i) < {key}, then return {i + 1}. This is equal to find the
-  // right boundary of an interval x where all keys in x < {key}
+  // Binary search to find the smallest index i where KeyAt(i) >= {key}. This is equal to find the
+  // left boundary of an interval x where all keys in x >= {key}
   int l = 0;
   int r = GetSize() - 1;
 
-  // If all the keys are smaller than {key}, return the largest key. Otherwise {l + 1} will be out of bounds
-  if (comparator(KeyAt(r), key)) {
-    return r;
+  // Key is larger than all the keys. This is used to get .end() iterator
+  if (comparator(key, KeyAt(r)) > 0) {
+    return r + 1;
   }
 
   while (l < r) {
-    int mid = (l + r + 1) >> 1;
-    if (comparator(KeyAt(mid), key)) {
-      l = mid;
+    int mid = (l + r) >> 1;
+    // middle_key >= key
+    if (comparator(KeyAt(mid), key) >= 0) {
+      r = mid;
     } else {
-      r = mid - 1;
+      l = mid + 1;
     }
   };
-  return l + 1;
+  return l;
 }
 
 /*
@@ -116,9 +117,27 @@ const MappingType &B_PLUS_TREE_LEAF_PAGE_TYPE::GetItem(int index) const {
  */
 INDEX_TEMPLATE_ARGUMENTS
 int B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) {
+  // Case 1: the node is empty
+  if (GetSize() == 0) {
+    SetItem(0, {key, value});
+    IncreaseSize(1);
+    return GetSize();
+  }
+
+  // Case 2: key is smaller than the smallest key, i.e. the first key of the node
+  if (comparator(key, KeyAt(0)) < 0) {
+    int moved_size = GetSize();
+    std::memmove(GetItems() + 1, GetItems(), sizeof(MappingType) * moved_size);
+    SetItem(0, {key, value});
+    IncreaseSize(1);
+    return GetSize();
+  }
+
+  // Case 3: key is in the middle or key is larger than the largest key in this node
   // Find the index to insert
   int key_index = KeyIndex(key, comparator);
   // Move items_[index:] right for one space
+  // size: GetSize() - 1 - key_index + 1
   int moved_size = GetSize() - key_index;
   std::memmove(GetItems() + key_index + 1, GetItems() + key_index, sizeof(MappingType) * moved_size);
   SetItem(key_index, {key, value});
@@ -137,8 +156,9 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfTo(BPlusTreeLeafPage *recipient) {
   // Move the latter half to the start of recipient
   auto items = GetItems();
   auto size = GetSize();
+  // Starting index of moved pairs
   auto st = size >> 1;
-  auto num_copy_items = size - st + 1;
+  auto num_copy_items = size - st;
   recipient->CopyNFrom(items + st, num_copy_items);
   IncreaseSize(-num_copy_items);
 }
@@ -165,7 +185,7 @@ INDEX_TEMPLATE_ARGUMENTS
 bool B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType *value, const KeyComparator &comparator) const {
   // Binary search to locate the first key that is larger than or equal to {key}
   // If all keys are smaller than {key}, return false
-  if (comparator(KeyAt(GetSize() - 1), key)) {
+  if (comparator(KeyAt(GetSize() - 1), key) < 0) {
     return false;
   }
 
@@ -174,15 +194,14 @@ bool B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType *value, co
   while (l < r) {
     int mid = (l + r) >> 1;
     auto mid_key = KeyAt(mid);
-    if (comparator(mid_key, key)) {
-      l = mid + 1;
-    } else {
+    if (comparator(mid_key, key) >= 0) {
       r = mid;
+    } else {
+      l = mid + 1;
     }
   }
 
-  // If there is at least a key larger than or equal to {key} and is not larger than {key}, {key} found
-  if (!comparator(key, KeyAt(l))) {
+  if (comparator(key, KeyAt(l)) == 0) {
     *value = ValueAt(l);
     return true;
   }
@@ -195,7 +214,10 @@ bool B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType *value, co
 /*
  * First look through leaf page to see whether delete key exist or not. If
  * exist, perform deletion, otherwise return immediately.
- * NOTE: store key&value pair continuously after deletion
+ * NOTE:
+ * 1. It is guaranteed that this method need only perform delete and need not worry about merge or redistribution, just
+ * like Insert
+ * 2. Store key&value pair continuously after deletion
  * @return   page size after deletion
  */
 INDEX_TEMPLATE_ARGUMENTS

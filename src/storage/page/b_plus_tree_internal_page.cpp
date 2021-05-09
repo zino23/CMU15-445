@@ -36,7 +36,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id
   SetPageId(page_id);
   SetParentPageId(parent_id);
   SetMaxSize(max_size);
-  // the first key/value pair
+  // The first key/value pair will always exist, cos the tree grows at the root
   SetSize(1);
 }
 
@@ -93,39 +93,29 @@ ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const { return item
  */
 INDEX_TEMPLATE_ARGUMENTS
 ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyComparator &comparator) const {
-  // Start with the second key (index 1), binary search to find the smallest index which contains a key larger than the
-  // given {key}. This is equal to find an interval's left boundary. The returned {value} is at the found index
-  // decremented by 1. Call ValueAt() to return the value/child pointer, i.e. page_id
+  // Start with the second key (index 1), binary search to find the largest index which contains a key smaller than the
+  // given {key}. This is equal to find an interval's right boundary. Call ValueAt() to return the value/child pointer,
+  // i.e. page_id
+
+  // If the key is smaller than the smallest key of this node, i.e. the first key, return the first child pointer
+  if (comparator(key, KeyAt(1)) < 0) {
+    return ValueAt(0);
+  }
 
   int l = 1;
-  int r = GetSize();
+  int r = GetSize() - 1;
   while (l < r) {
     // separate the interval into two subintervals [l, mid], [mid + 1, r]
-    int mid = (l + r) >> 1;
+    int mid = (l + r + 1) >> 1;
     auto mid_key = KeyAt(mid);
-    // [mid_key:] should all > key
-    if (comparator(mid_key, key)) {
-      l = mid + 1;
+    if (comparator(mid_key, key) < 0) {
+      l = mid;
     } else {
-      r = mid;
+      r = mid - 1;
     }
   }
   // return the found index decremented by 1
-  return ValueAt(l - 1);
-
-  // Another way of binary search, find the largest index that is smaller or equal than the given {key}. This is equal
-  // to find an interval's right boundary. This cannot be used because comparator(a, b) return false if a == b while (l
-  // < r) {
-  //   int mid = (l + r + 1) >> 1;
-  //   auto mid_key = KeyAt(mid);
-  //   // [:mid_key] should all
-  //   if (comparator(mid_key, key)) {
-  //     l = mid;
-  //   } else {
-  //     r = mid - 1;
-  //   }
-  // }
-  // return ValueAt(l);
+  return ValueAt(l);
 }
 
 /*****************************************************************************
@@ -144,7 +134,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::PopulateNewRoot(const ValueType &old_value,
   // *this points to root node
   SetValueAt(0, old_value);
   SetPairAt(1, {new_key, new_value});
-  // TODO(q): the first value is empty at beginning
+  // TODO(q): the first key is empty, i.e. "INVALID"
   IncreaseSize(1);
 }
 /*
@@ -157,11 +147,10 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::PopulateNewRoot(const ValueType &old_value,
 INDEX_TEMPLATE_ARGUMENTS
 int B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertNodeAfter(const ValueType &old_value, const KeyType &new_key,
                                                     const ValueType &new_value) {
-  // assums there is space
-  assert(GetMaxSize() > GetSize());
   auto value_index = ValueIndex(old_value);
+  auto moved_size = GetSize() - 1 - (value_index + 1) + 1;
   std::memmove(GetItems() + value_index + 2, GetItems() + value_index + 1,
-               sizeof(MappingType) * GetSize() - value_index - 1);
+               sizeof(MappingType) * moved_size );
   SetPairAt(value_index + 1, {new_key, new_value});
   IncreaseSize(1);
   return 0;
@@ -181,7 +170,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveHalfTo(BPlusTreeInternalPage *recipient
   auto size = GetSize();
   // starting index of to be moved items
   auto st = size / 2;
-  auto num_copy_items = size - st + 1;
+  auto num_copy_items = size - 1 - st + 1;
   // call CopyNFrom to copy half items to recipient
   // recipient should be empty at this point
   recipient->CopyNFrom(items + st, num_copy_items, buffer_pool_manager);
@@ -216,7 +205,8 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyNFrom(MappingType *items, int size, Buf
     // adopt copied nodes
     item_node->SetParentPageId(page_id);
   }
-  IncreaseSize(size);
+  // During initialization of internal page, the size is already one
+  IncreaseSize(size - 1);
 }
 
 /*****************************************************************************
@@ -242,7 +232,10 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Remove(int index) {
  * NOTE: only call this method within AdjustRoot()(in b_plus_tree.cpp)
  */
 INDEX_TEMPLATE_ARGUMENTS
-ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::RemoveAndReturnOnlyChild() { return INVALID_PAGE_ID; }
+ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::RemoveAndReturnOnlyChild() {
+  // Don't bother change size cos this page will be deleted
+  return ValueAt(0);
+}
 /*****************************************************************************
  * MERGE
  *****************************************************************************/
@@ -304,8 +297,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveFirstToEndOf(BPlusTreeInternalPage *rec
   // *this points to a node whose size is larger than half, so it can lend its key/value pairs to recipient, which is
   // this's right sibling
   // TODO(q): why only move one pair when we can calculate how many pairs recipient is needed to make it at least half
-  auto size = GetSize();
-  assert((size - 1 >= size / 2) && "Redistribution error: this node does not have enough key/value pairs!");
+  // Move the middle_key down to be the key of moved pair
   auto moved_pair = std::make_pair(middle_key, ValueAt(0));
   // Update size
   IncreaseSize(-1);

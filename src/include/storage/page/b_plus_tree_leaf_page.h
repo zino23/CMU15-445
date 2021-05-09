@@ -56,6 +56,9 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void SetValueAt(int index, const ValueType &value) { items_[index].second = value; }
   void SetItem(int index, const MappingType &item) { items_[index] = item; }
   bool IsFull() { return GetSize() >= GetMaxSize(); }
+  // Note: the leaf node also has a pointer to its sibling node represented by next_page_id_ in the header, so its half
+  // full definition is different from internal node (well, in essence, they are the same)
+  bool IsHalfFull() { return GetSize() >= GetMaxSize() / 2; }
 
   // insert and delete methods
   int Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator);
