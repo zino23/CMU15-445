@@ -13,6 +13,7 @@
 #include "buffer/buffer_pool_manager.h"
 
 #include <list>
+#include <mutex>
 #include <unordered_map>
 #include "common/config.h"
 
@@ -58,6 +59,7 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
   }
 
   // 1.2 Not exist, find a free slot in the free_list_
+  std::lock_guard<std::mutex> guard(latch_);
   if (!free_list_.empty()) {
     // just fetch the first free slot
     auto frame_id = free_list_.front();
@@ -142,6 +144,7 @@ Page *BufferPoolManager::NewPageImpl(page_id_t *page_id) {
   // the disk manager tracks. With this new page, we can read and write data to
   // and from it
 
+  std::lock_guard<std::mutex> guard(latch_);
   auto page_iter = GetPages();
   bool all_pinned = true;
   // if there is free slot in the free list, put the newly created page in the
@@ -220,6 +223,7 @@ bool BufferPoolManager::DeletePageImpl(page_id_t page_id) {
   }
   page_table_.erase(page_id);
   ResetMetadata(frame_id);
+  std::lock_guard<std::mutex> guard(latch_);
   free_list_.emplace_back(frame_id);
   // no need to call replacer_->Pin() cause when a page is pinned to a frame in free_list_, Pin() will be called then
   return true;

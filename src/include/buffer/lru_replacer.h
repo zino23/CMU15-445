@@ -54,6 +54,8 @@ class LRUReplacer : public Replacer {
   std::vector<frame_id_t> replacement_pool_;
   std::unordered_map<frame_id_t, bool> is_referenced;
   size_t pointer_ = 0;
+  // latch for replacement_pool_
+  std::mutex latch_;
 };
 
 }  // namespace bustub

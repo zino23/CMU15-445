@@ -24,8 +24,13 @@ LRUReplacer::LRUReplacer(size_t num_pages) {}
 LRUReplacer::~LRUReplacer() = default;
 
 bool LRUReplacer::Victim(frame_id_t *frame_id) {
+  // need to guard the the read/write access to replacement_pool_, otherwise due to multi-threading the read may be
+  // outdated, and the update may be overriden;
+  latch_.lock();
+
   // check if there are possile victims
   if (replacement_pool_.empty()) {
+    latch_.unlock();
     return false;
   }
 
@@ -38,15 +43,18 @@ bool LRUReplacer::Victim(frame_id_t *frame_id) {
       is_referenced[victim] = false;
     } else {
       *frame_id = victim;
+      latch_.unlock();
       // call pin to remove the frame from replacement pool
       Pin(*frame_id);
       return true;
     }
   }
+  latch_.unlock();
   return false;
 }
 
 void LRUReplacer::Pin(frame_id_t frame_id) {
+  std::lock_guard<std::mutex> guard(latch_);
   // the replacer does not have the frame, just return
   if (is_referenced.find(frame_id) == is_referenced.end()) {
     return;
@@ -63,6 +71,7 @@ void LRUReplacer::Pin(frame_id_t frame_id) {
 }
 
 void LRUReplacer::Unpin(frame_id_t frame_id) {
+  std::lock_guard<std::mutex> guard(latch_);
   // if the unpinned frame is already in the replacer, simply return
   if (is_referenced.find(frame_id) != is_referenced.end()) {
     return;

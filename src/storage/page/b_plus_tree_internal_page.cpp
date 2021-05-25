@@ -93,9 +93,9 @@ ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const { return item
  */
 INDEX_TEMPLATE_ARGUMENTS
 ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyComparator &comparator) const {
-  // Start with the second key (index 1), binary search to find the largest index which contains a key smaller than the
-  // given {key}. This is equal to find an interval's right boundary. Call ValueAt() to return the value/child pointer,
-  // i.e. page_id
+  // Start with the second key (index 1), binary search to find the largest index which contains a key smaller than or
+  // equal to the given {key}. This is equal to find an interval's right boundary. Call ValueAt() to return the
+  // value/child pointer, i.e. page_id
 
   // If the key is smaller than the smallest key of this node, i.e. the first key, return the first child pointer
   if (comparator(key, KeyAt(1)) < 0) {
@@ -108,7 +108,7 @@ ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyCo
     // separate the interval into two subintervals [l, mid], [mid + 1, r]
     int mid = (l + r + 1) >> 1;
     auto mid_key = KeyAt(mid);
-    if (comparator(mid_key, key) < 0) {
+    if (comparator(mid_key, key) <= 0) {
       l = mid;
     } else {
       r = mid - 1;
@@ -149,8 +149,7 @@ int B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertNodeAfter(const ValueType &old_value, 
                                                     const ValueType &new_value) {
   auto value_index = ValueIndex(old_value);
   auto moved_size = GetSize() - 1 - (value_index + 1) + 1;
-  std::memmove(GetItems() + value_index + 2, GetItems() + value_index + 1,
-               sizeof(MappingType) * moved_size );
+  std::memmove(GetItems() + value_index + 2, GetItems() + value_index + 1, sizeof(MappingType) * moved_size);
   SetPairAt(value_index + 1, {new_key, new_value});
   IncreaseSize(1);
   return 0;

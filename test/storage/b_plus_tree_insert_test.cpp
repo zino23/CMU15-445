@@ -10,8 +10,6 @@
 #include "gtest/gtest.h"
 #include "storage/index/b_plus_tree.h"
 
-using namespace std;
-
 namespace bustub {
 
 TEST(BPlusTreeTests, InsertTest1) {
@@ -31,19 +29,23 @@ TEST(BPlusTreeTests, InsertTest1) {
   // create and fetch header_page
   page_id_t page_id;
   auto header_page = bpm->NewPage(&page_id);
+  // do not need header page in this test, just ignore it
   (void)header_page;
 
   std::vector<int64_t> keys = {1, 2, 3, 4, 5};
   for (auto key : keys) {
+    // only keep low 32 bits
     int64_t value = key & 0xFFFFFFFF;
+    // TODO(QUESTION): why does slot_num starts from 1 instead of 0
     // page_id: 0
-    // value: 1~5
+    // value/slot number: 1~5
     rid.Set(static_cast<int32_t>(key >> 32), value);
+    // cout << rid << endl;
     index_key.SetFromInteger(key);
     // std::cout << "index_key: " << index_key << std::endl;
     tree.Insert(index_key, rid, transaction);
-    // tree.Print(bpm);
   }
+  // tree.Print(bpm);
 
   // std::string outf;
   // tree.Draw(bpm, outf);
@@ -59,25 +61,25 @@ TEST(BPlusTreeTests, InsertTest1) {
     EXPECT_EQ(rids[0].GetSlotNum(), value);
   }
 
-  // int64_t start_key = 1;
-  // int64_t current_key = start_key;
-  // index_key.SetFromInteger(start_key);
-  // for (auto iterator = tree.Begin(index_key); iterator != tree.end(); ++iterator) {
-  //   auto location = (*iterator).second;
-  //   EXPECT_EQ(location.GetPageId(), 0);
-  //   EXPECT_EQ(location.GetSlotNum(), current_key);
-  //   current_key = current_key + 1;
-  // }
+  int64_t start_key = 1;
+  int64_t current_key = start_key;
+  index_key.SetFromInteger(start_key);
+  for (auto iterator = tree.Begin(index_key); iterator != tree.end(); ++iterator) {
+    auto location = (*iterator).second;
+    EXPECT_EQ(location.GetPageId(), 0);
+    EXPECT_EQ(location.GetSlotNum(), current_key);
+    current_key = current_key + 1;
+  }
 
-  // EXPECT_EQ(current_key, keys.size() + 1);
+  EXPECT_EQ(current_key, keys.size() + 1);
 
-  // bpm->UnpinPage(HEADER_PAGE_ID, true);
-  // delete key_schema;
-  // delete transaction;
-  // delete disk_manager;
-  // delete bpm;
-  // remove("test.db");
-  // remove("test.log");
+  bpm->UnpinPage(HEADER_PAGE_ID, true);
+  delete key_schema;
+  delete transaction;
+  delete disk_manager;
+  delete bpm;
+  remove("test.db");
+  remove("test.log");
 }
 
 TEST(BPlusTreeTests, InsertTest2) {
@@ -118,34 +120,34 @@ TEST(BPlusTreeTests, InsertTest2) {
     EXPECT_EQ(rids[0].GetSlotNum(), value);
   }
 
-  // int64_t start_key = 1;
-  // int64_t current_key = start_key;
-  // index_key.SetFromInteger(start_key);
-  // for (auto iterator = tree.Begin(index_key); iterator != tree.end(); ++iterator) {
-  //   auto location = (*iterator).second;
-  //   EXPECT_EQ(location.GetPageId(), 0);
-  //   EXPECT_EQ(location.GetSlotNum(), current_key);
-  //   current_key = current_key + 1;
-  // }
+  int64_t start_key = 1;
+  int64_t current_key = start_key;
+  index_key.SetFromInteger(start_key);
+  for (auto iterator = tree.Begin(index_key); iterator != tree.end(); ++iterator) {
+    auto location = (*iterator).second;
+    EXPECT_EQ(location.GetPageId(), 0);
+    EXPECT_EQ(location.GetSlotNum(), current_key);
+    current_key = current_key + 1;
+  }
 
-  // EXPECT_EQ(current_key, keys.size() + 1);
+  EXPECT_EQ(current_key, keys.size() + 1);
 
-  // start_key = 3;
-  // current_key = start_key;
-  // index_key.SetFromInteger(start_key);
-  // for (auto iterator = tree.Begin(index_key); iterator != tree.end(); ++iterator) {
-  //   auto location = (*iterator).second;
-  //   EXPECT_EQ(location.GetPageId(), 0);
-  //   EXPECT_EQ(location.GetSlotNum(), current_key);
-  //   current_key = current_key + 1;
-  // }
+  start_key = 3;
+  current_key = start_key;
+  index_key.SetFromInteger(start_key);
+  for (auto iterator = tree.Begin(index_key); iterator != tree.end(); ++iterator) {
+    auto location = (*iterator).second;
+    EXPECT_EQ(location.GetPageId(), 0);
+    EXPECT_EQ(location.GetSlotNum(), current_key);
+    current_key = current_key + 1;
+  }
 
-  // bpm->UnpinPage(HEADER_PAGE_ID, true);
-  // delete key_schema;
-  // delete transaction;
-  // delete disk_manager;
-  // delete bpm;
-  // remove("test.db");
-  // remove("test.log");
+  bpm->UnpinPage(HEADER_PAGE_ID, true);
+  delete key_schema;
+  delete transaction;
+  delete disk_manager;
+  delete bpm;
+  remove("test.db");
+  remove("test.log");
 }
 }  // namespace bustub

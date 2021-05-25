@@ -50,7 +50,7 @@ INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t next_page_id) { next_page_id_ = next_page_id; }
 
 /**
- * Helper method to find the first index i so that array[i].first >= key
+ * Helper method to find the first index i so that items[i].first >= key
  * NOTE: This method is only used when generating index iterator
  */
 INDEX_TEMPLATE_ARGUMENTS
@@ -73,7 +73,7 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(const KeyType &key, const KeyComparator
     } else {
       l = mid + 1;
     }
-  };
+  }
   return l;
 }
 

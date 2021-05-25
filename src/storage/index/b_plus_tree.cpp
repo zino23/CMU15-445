@@ -121,6 +121,7 @@ INDEX_TEMPLATE_ARGUMENTS
 bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, Transaction *transaction) {
   auto leaf_page = FindLeafPage(key, false);
   auto leaf_node = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(leaf_page->GetData());
+
   // Note: leaf node can hold up to { LEAF_PAGE_SIZE } key/value pairs, which will be larger than or equal to {
   // GetMaxSize() + 1 }. The plus 1 is reserved to hold an extra pair so after split, old_node and new_node will all be
   // at least half full
@@ -130,13 +131,11 @@ bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, 
     return true;
   }
 
-  // Leaf node is full:
   // 1. Insert key/value pair, since items_'s capacity is larger than or equal to {GetMaxSize() + 1}, this will succeed
   leaf_node->Insert(key, value, comparator_);
   // 2. Split the node
-  B_PLUS_TREE_LEAF_PAGE_TYPE *new_node;
-  new_node = Split(leaf_node);
-  new_node->SetNextPageId(new_node->GetNextPageId());
+  LeafPage *new_node = Split(leaf_node);
+  new_node->SetNextPageId(leaf_node->GetNextPageId());
   leaf_node->SetNextPageId(new_node->GetPageId());
 
   // 3. Insert new_node into leaf_node's parent. The separator key is new_node's first key
@@ -574,7 +573,14 @@ bool BPLUSTREE_TYPE::AdjustRoot(BPlusTreePage *old_root_node) {
  * @return : index iterator
  */
 INDEX_TEMPLATE_ARGUMENTS
-INDEXITERATOR_TYPE BPLUSTREE_TYPE::begin() { return INDEXITERATOR_TYPE(); }
+INDEXITERATOR_TYPE BPLUSTREE_TYPE::begin() {
+  // Find the leftmost leaf page
+  KeyType key;
+  auto leaf_page = FindLeafPage(key, true);
+  auto leaf = reinterpret_cast<BPlusTreeLeafPage<KeyType, ValueType, KeyComparator> *>(leaf_page->GetData());
+  auto leaf_id = leaf->GetPageId();
+  return INDEXITERATOR_TYPE(leaf_id, 0, buffer_pool_manager_);
+}
 
 /*
  * Input parameter is low key, find the leaf page that contains the input key
@@ -582,7 +588,13 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::begin() { return INDEXITERATOR_TYPE(); }
  * @return : index iterator
  */
 INDEX_TEMPLATE_ARGUMENTS
-INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) { return INDEXITERATOR_TYPE(); }
+INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) {
+  auto leaf_page = FindLeafPage(key);
+  auto leaf = reinterpret_cast<BPlusTreeLeafPage<KeyType, ValueType, KeyComparator> *>(leaf_page->GetData());
+  auto leaf_id = leaf->GetPageId();
+  int index = leaf->KeyIndex(key, comparator_);
+  return INDEXITERATOR_TYPE(leaf_id, index, buffer_pool_manager_);
+}
 
 /*
  * Input parameter is void, construct an index iterator representing the end
@@ -590,7 +602,23 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) { return INDEXITERA
  * @return : index iterator
  */
 INDEX_TEMPLATE_ARGUMENTS
-INDEXITERATOR_TYPE BPLUSTREE_TYPE::end() { return INDEXITERATOR_TYPE(); }
+INDEXITERATOR_TYPE BPLUSTREE_TYPE::end() {
+  KeyType key;
+  auto leaf_page = FindLeafPage(key, true);
+  auto leaf = reinterpret_cast<BPlusTreeLeafPage<KeyType, ValueType, KeyComparator> *>(leaf_page->GetData());
+  while (leaf->GetNextPageId() != INVALID_PAGE_ID) {
+    buffer_pool_manager_->UnpinPage(leaf->GetPageId(), false);
+    auto next_id = leaf->GetNextPageId();
+    leaf_page = buffer_pool_manager_->FetchPage(next_id);
+    if (leaf_page == nullptr) {
+      throw Exception(ExceptionType::INVALID, "During compute end(): cannot fetch page!");
+    }
+    leaf = reinterpret_cast<BPlusTreeLeafPage<KeyType, ValueType, KeyComparator> *>(leaf_page->GetData());
+  }
+  auto leaf_id = leaf->GetPageId();
+  int index = leaf->GetSize();
+  return INDEXITERATOR_TYPE(leaf_id, index, buffer_pool_manager_);
+}
 
 /*****************************************************************************
  * UTILITIES AND DEBUG
@@ -795,24 +823,52 @@ void BPLUSTREE_TYPE::ToGraph(BPlusTreePage *page, BufferPoolManager *bpm, std::o
  * @param bpm
  */
 INDEX_TEMPLATE_ARGUMENTS
+/*******************************************************************************************************************************************************************
+ * The commented one is detailed version which is more helpful for debugging. to use b_plus_tree_print_test to generate
+ *graph of the tree, use the default version *
+ *******************************************************************************************************************************************************************/
+// void BPLUSTREE_TYPE::ToString(BPlusTreePage *page, BufferPoolManager *bpm) const {
+//   if (page->IsLeafPage()) {
+//     LeafPage *leaf = reinterpret_cast<LeafPage *>(page);
+//     std::cout << "Leaf Page: " << leaf->GetPageId() << " parent: " << leaf->GetParentPageId()
+//               << " next: " << leaf->GetNextPageId() << std::endl;
+//     std::cout << "Page size: " << leaf->GetSize() << std::endl;
+//     for (int i = 0; i < leaf->GetSize(); i++) {
+//       std::cout << "Key at index " << i << ": " << leaf->KeyAt(i) << std::endl;
+//     }
+//     std::cout << std::endl;
+//     std::cout << std::endl;
+//   } else {
+//     InternalPage *internal = reinterpret_cast<InternalPage *>(page);
+//     std::cout << "Internal Page: " << internal->GetPageId() << " parent: " << internal->GetParentPageId() <<
+//     std::endl; std::cout << "Page size: " << internal->GetSize() << std::endl; for (int i = 0; i <
+//     internal->GetSize(); i++) {
+//       std::cout << "Index " << i << ": "
+//                 << "{ " << internal->KeyAt(i) << ": " << internal->ValueAt(i) << " }" << std::endl;
+//     }
+//     std::cout << std::endl;
+//     std::cout << std::endl;
+//     for (int i = 0; i < internal->GetSize(); i++) {
+//       ToString(reinterpret_cast<BPlusTreePage *>(bpm->FetchPage(internal->ValueAt(i))->GetData()), bpm);
+//     }
+//   }
+//   bpm->UnpinPage(page->GetPageId(), false);
+// }
 void BPLUSTREE_TYPE::ToString(BPlusTreePage *page, BufferPoolManager *bpm) const {
   if (page->IsLeafPage()) {
     LeafPage *leaf = reinterpret_cast<LeafPage *>(page);
     std::cout << "Leaf Page: " << leaf->GetPageId() << " parent: " << leaf->GetParentPageId()
               << " next: " << leaf->GetNextPageId() << std::endl;
-    std::cout << "Page size: " << leaf->GetSize() << std::endl;
     for (int i = 0; i < leaf->GetSize(); i++) {
-      std::cout << "Key at index " << i << ": " << leaf->KeyAt(i) << std::endl;
+      std::cout << leaf->KeyAt(i) << ",";
     }
     std::cout << std::endl;
     std::cout << std::endl;
   } else {
     InternalPage *internal = reinterpret_cast<InternalPage *>(page);
     std::cout << "Internal Page: " << internal->GetPageId() << " parent: " << internal->GetParentPageId() << std::endl;
-    std::cout << "Page size: " << internal->GetSize() << std::endl;
     for (int i = 0; i < internal->GetSize(); i++) {
-      std::cout << "Index " << i << ": "
-                << "{ " << internal->KeyAt(i) << ": " << internal->ValueAt(i) << " }" << std::endl;
+      std::cout << internal->KeyAt(i) << ": " << internal->ValueAt(i) << ",";
     }
     std::cout << std::endl;
     std::cout << std::endl;

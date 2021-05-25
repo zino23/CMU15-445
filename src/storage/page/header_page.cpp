@@ -37,6 +37,7 @@ bool HeaderPage::InsertRecord(const std::string &name, const page_id_t root_id) 
   return true;
 }
 
+// Move next record to current record's place
 bool HeaderPage::DeleteRecord(const std::string &name) {
   int record_num = GetRecordCount();
   assert(record_num > 0);
