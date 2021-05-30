@@ -21,7 +21,8 @@
 namespace bustub {
 
 /**
- * Reader-Writer latch backed by std::mutex.
+ * Reader-Writer latch which prioritizes on writer backed by std::mutex and
+ * std::condition_variable
  */
 class ReaderWriterLatch {
   using mutex_t = std::mutex;
@@ -39,11 +40,16 @@ class ReaderWriterLatch {
    */
   void WLock() {
     std::unique_lock<mutex_t> latch(mutex_);
+    // Put the checking of condition predicate inside while loop in case another writer thread enters and set
+    // writer_entered_ to true
     while (writer_entered_) {
+      // This is tricky, we should put this thread in reader_ instead of writer_ cos when releasing writer lock, we will
+      // wake up all threads in reader_
       reader_.wait(latch);
     }
     writer_entered_ = true;
     while (reader_count_ > 0) {
+      // There is at most 1 writer thread in writer_
       writer_.wait(latch);
     }
   }
@@ -54,6 +60,10 @@ class ReaderWriterLatch {
   void WUnlock() {
     std::lock_guard<mutex_t> guard(mutex_);
     writer_entered_ = false;
+    // Because we put blocked read and write threads in reader_ when a writer enters, we can and should simply wake up
+    // all threads in reader_ and let them compete according to the scheduler
+    // Note: if we use reader_.notify_one() and wake up a reader, writers waiting on reader_ will never be woken up cos
+    // RUnlock wakes up threads waiting on writer_
     reader_.notify_all();
   }
 
@@ -76,9 +86,11 @@ class ReaderWriterLatch {
     reader_count_--;
     if (writer_entered_) {
       if (reader_count_ == 0) {
+        // If more than one threads is waiting
         writer_.notify_one();
       }
     } else {
+      // Notify the reader thread blocked cos reader_count_ == MAX_READERS
       if (reader_count_ == MAX_READERS - 1) {
         reader_.notify_one();
       }
@@ -91,6 +103,37 @@ class ReaderWriterLatch {
   cond_t reader_;
   uint32_t reader_count_{0};
   bool writer_entered_{false};
+};
+
+class ReaderWriterLatchPreferReader {
+  uint32_t reader_count_{0};
+  using mutex_t = std::mutex;
+  mutex_t reader_lock_;
+  mutex_t writer_lock_;
+
+ public:
+  ReaderWriterLatchPreferReader() = default;
+
+  void RLock() {
+    std::lock_guard<mutex_t> guard(reader_lock_);
+    reader_count_++;
+    // First reader, acquire writer lock to block subsequent writer
+    if (reader_count_ == 1) {
+      WLock();
+    }
+  }
+
+  void RUnlock() {
+    std::lock_guard<mutex_t> guard(reader_lock_);
+    reader_count_--;
+    // No reader, release writer lock
+    if (reader_count_ == 0) {
+      WUnlock();
+    }
+  }
+
+  void WLock() { writer_lock_.lock(); }
+  void WUnlock() { writer_lock_.unlock(); }
 };
 
 }  // namespace bustub

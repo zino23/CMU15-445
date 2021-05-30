@@ -21,6 +21,8 @@ namespace bustub {
 #define LEAF_PAGE_HEADER_SIZE 28
 #define LEAF_PAGE_SIZE ((PAGE_SIZE - LEAF_PAGE_HEADER_SIZE) / sizeof(MappingType))
 
+#define B_PLUS_TREE_LEAF_PARENT_TYPE BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator>
+
 /**
  * Store indexed key and record id(record id = page id combined with slot id,
  * see include/common/rid.h for detailed implementation) together within leaf
@@ -55,11 +57,10 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   MappingType *GetItems() { return items_; }
   void SetValueAt(int index, const ValueType &value) { items_[index].second = value; }
   void SetItem(int index, const MappingType &item) { items_[index] = item; }
-  // Leaf page can only hold {GetMaxSize() - 1} pairs, with the extra slot for sibling pointer
-  bool IsFull() { return GetSize() >= GetMaxSize() - 1; }
+  bool IsFull() { return GetSize() > GetMaxSize(); }
   // Note: the leaf node also has a pointer to its sibling node represented by next_page_id_ in the header, so its half
   // full definition is different from internal node (well, in essence, they are the same)
-  bool IsHalfFull() { return GetSize() >= GetMaxSize() / 2; }
+  bool IsHalfFull() { return GetSize() >= GetMinSize(); }
 
   // insert and delete methods
   int Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator);
@@ -67,13 +68,16 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   int RemoveAndDeleteRecord(const KeyType &key, const KeyComparator &comparator);
 
   // Split and Merge utility methods
-  void MoveHalfTo(BPlusTreeLeafPage *recipient);
-  void MoveAllTo(BPlusTreeLeafPage *recipient);
-  void MoveFirstToEndOf(BPlusTreeLeafPage *recipient);
-  void MoveLastToFrontOf(BPlusTreeLeafPage *recipient);
+  void MoveHalfTo(BPlusTreeLeafPage *recipient, BufferPoolManager *buffer_pool_manager);
+  void MoveAllTo(BPlusTreeLeafPage *recipient, const KeyType &middle_key, BufferPoolManager *buffer_pool_manager);
+  void MoveFirstToEndOf(BPlusTreeLeafPage *recipient, const KeyType &middle_key,
+                        BufferPoolManager *buffer_pool_manager);
+  void MoveLastToFrontOf(BPlusTreeLeafPage *recipient, const KeyType &middle_key,
+                         BufferPoolManager *buffer_pool_manager);
 
  private:
-  void CopyNFrom(MappingType *items, int size);
+  void CopyHalfFrom(MappingType *items, int size);
+  void CopyAllFrom(MappingType *items, int size);
   void CopyLastFrom(const MappingType &item);
   void CopyFirstFrom(const MappingType &item);
   page_id_t next_page_id_;

@@ -15,6 +15,7 @@
 #include "common/config.h"
 #include "common/exception.h"
 #include "common/rid.h"
+#include "storage/page/b_plus_tree_internal_page.h"
 #include "storage/page/b_plus_tree_leaf_page.h"
 #include "storage/page/b_plus_tree_page.h"
 
@@ -34,7 +35,8 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id, in
   SetPageType(IndexPageType::LEAF_PAGE);
   SetPageId(page_id);
   SetParentPageId(parent_id);
-  SetMaxSize(max_size);
+  // The extra slot is for sibling pointer
+  SetMaxSize(max_size - 1);
   // The first key of leaf page is valid, so set initial size to 0
   SetSize(0);
   SetNextPageId(INVALID_PAGE_ID);
@@ -58,12 +60,8 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(const KeyType &key, const KeyComparator
   // Binary search to find the smallest index i where KeyAt(i) >= {key}. This is equal to find the
   // left boundary of an interval x where all keys in x >= {key}
   int l = 0;
-  int r = GetSize() - 1;
-
-  // Key is larger than all the keys. This is used to get .end() iterator
-  if (comparator(key, KeyAt(r)) > 0) {
-    return r + 1;
-  }
+  // Set r to GetSize() - 1 will generate corner case where the key is larger than all the keys
+  int r = GetSize();
 
   while (l < r) {
     int mid = (l + r) >> 1;
@@ -83,7 +81,7 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(const KeyType &key, const KeyComparator
  */
 INDEX_TEMPLATE_ARGUMENTS
 KeyType B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const {
-  // replace with your own code
+  assert(index >= 0 && index < GetSize());
   auto item = GetItem(index);
   return item.first;
 }
@@ -104,7 +102,7 @@ ValueType B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const {
  */
 INDEX_TEMPLATE_ARGUMENTS
 const MappingType &B_PLUS_TREE_LEAF_PAGE_TYPE::GetItem(int index) const {
-  // replace with your own code
+  assert(index >= 0 && index < GetSize());
   return items_[index];
 }
 
@@ -117,28 +115,19 @@ const MappingType &B_PLUS_TREE_LEAF_PAGE_TYPE::GetItem(int index) const {
  */
 INDEX_TEMPLATE_ARGUMENTS
 int B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) {
-  // Case 1: the node is empty
-  if (GetSize() == 0) {
-    SetItem(0, {key, value});
-    IncreaseSize(1);
-    return GetSize();
-  }
-
-  // Case 2: key is smaller than the smallest key, i.e. the first key of the node
-  if (comparator(key, KeyAt(0)) < 0) {
-    int moved_size = GetSize();
-    std::memmove(GetItems() + 1, GetItems(), sizeof(MappingType) * moved_size);
-    SetItem(0, {key, value});
-    IncreaseSize(1);
-    return GetSize();
-  }
-
-  // Case 3: key is in the middle or key is larger than the largest key in this node
+  assert(GetSize() < static_cast<int>(LEAF_PAGE_SIZE - 1));
   // Find the index to insert
   int key_index = KeyIndex(key, comparator);
-  // Move items_[index:] right for one space
+
+  // Check if the key is a duplicate
+  if (key_index < GetSize() && comparator(KeyAt(key_index), key) == 0) {
+    return GetSize();
+  }
+
+  // Move items_[key_index:GetSize() - 1] right for one space
   // size: GetSize() - 1 - key_index + 1
   int moved_size = GetSize() - key_index;
+  // Use memmove to deal with overlapping issue
   std::memmove(GetItems() + key_index + 1, GetItems() + key_index, sizeof(MappingType) * moved_size);
   SetItem(key_index, {key, value});
   IncreaseSize(1);
@@ -152,22 +141,28 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &valu
  * Remove half of key & value pairs from this page to "recipient" page
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfTo(BPlusTreeLeafPage *recipient) {
-  // Move the latter half to the start of recipient
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfTo(BPlusTreeLeafPage *recipient, BufferPoolManager *buffer_pool_manager) {
+  // Assert this node and recipient is in correct state
+  assert(GetSize() == GetMaxSize() + 1);
+  assert(recipient->GetSize() == 0);
+
+  // Move {GetMinSize() + 1} items to its right sibling
   auto items = GetItems();
   auto size = GetSize();
-  // Starting index of moved pairs
-  auto st = size >> 1;
-  auto num_copy_items = size - st;
-  recipient->CopyNFrom(items + st, num_copy_items);
+  auto remain_size = GetMinSize();
+  auto num_copy_items = size - remain_size;
+  recipient->CopyHalfFrom(items + remain_size, num_copy_items);
   IncreaseSize(-num_copy_items);
+  // TODO(IMPORTANT): update sibling pointer
+  recipient->SetNextPageId(GetNextPageId());
+  SetNextPageId(recipient->GetPageId());
 }
 
 /*
  * Copy starting from items, and copy {size} number of elements into me.
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyNFrom(MappingType *items, int size) {
+void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyHalfFrom(MappingType *items, int size) {
   auto my_items = GetItems();
   std::memmove(my_items, items, sizeof(MappingType) * size);
   IncreaseSize(size);
@@ -184,25 +179,9 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyNFrom(MappingType *items, int size) {
 INDEX_TEMPLATE_ARGUMENTS
 bool B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType *value, const KeyComparator &comparator) const {
   // Binary search to locate the first key that is larger than or equal to {key}
-  // If all keys are smaller than {key}, return false
-  if (comparator(KeyAt(GetSize() - 1), key) < 0) {
-    return false;
-  }
-
-  int l = 0;
-  int r = GetSize() - 1;
-  while (l < r) {
-    int mid = (l + r) >> 1;
-    auto mid_key = KeyAt(mid);
-    if (comparator(mid_key, key) >= 0) {
-      r = mid;
-    } else {
-      l = mid + 1;
-    }
-  }
-
-  if (comparator(key, KeyAt(l)) == 0) {
-    *value = ValueAt(l);
+  auto key_index = KeyIndex(key, comparator);
+  if (key_index < GetSize() && comparator(key, KeyAt(key_index)) == 0) {
+    *value = ValueAt(key_index);
     return true;
   }
   return false;
@@ -222,6 +201,7 @@ bool B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, ValueType *value, co
  */
 INDEX_TEMPLATE_ARGUMENTS
 int B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(const KeyType &key, const KeyComparator &comparator) {
+  assert(GetSize() > 0);
   ValueType value;
   if (!Lookup(key, &value, comparator)) {
     return GetSize();
@@ -229,11 +209,14 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(const KeyType &key, const 
 
   // The key exists, we can safely use KeyIndex to find the key's corresponding index
   int key_index = KeyIndex(key, comparator);
-  int st = key_index + 1;
-  int size_moved = GetSize() - st + 1;
-  auto items = GetItems();
-  std::memmove(items + key_index, items + st, sizeof(MappingType) * size_moved);
-  IncreaseSize(-1);
+  // Check the key is equal to the one we want to delete
+  if (key_index < GetSize() && comparator(key, KeyAt(key_index)) == 0) {
+    int st = key_index + 1;
+    int size_moved = GetSize() - st + 1;
+    auto items = GetItems();
+    std::memmove(items + key_index, items + st, sizeof(MappingType) * size_moved);
+    IncreaseSize(-1);
+  }
   return GetSize();
 }
 
@@ -245,12 +228,29 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(const KeyType &key, const 
  * to update the next_page id in the sibling page
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient) {
-  // recipient is empty at this point
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient, const KeyType &middle_key,
+                                           BufferPoolManager *buffer_pool_manager) {
+  // Merge *this to left sibling
+  // Note: the difference to internal page's version is leaf page does not need to use middle_key to as the key of
+  // recipient's first item
+  assert((GetSize() + recipient->GetSize() <= recipient->GetMaxSize()) &&
+         "Merge error: recipient does not have enough space to accommodate the underfull node!");
   auto items = GetItems();
-  recipient->CopyNFrom(items, GetSize());
+  recipient->CopyAllFrom(items, GetSize());
+  // TODO(IMPORTANT): update sibling pointer here is clearer
   recipient->SetNextPageId(GetNextPageId());
-  // this node will be deleted in Split
+  SetSize(0);
+  // this node will be deleted in Coalesce
+}
+
+/*
+ * Copy starting from items, and copy {size} number of elements into me.
+ */
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyAllFrom(MappingType *items, int size) {
+  auto my_items = GetItems();
+  std::memmove(my_items, items, sizeof(MappingType) * size);
+  IncreaseSize(size);
 }
 
 /*****************************************************************************
@@ -260,12 +260,21 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient) {
  * Remove the first key & value pair from this page to "recipient" page.
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveFirstToEndOf(BPlusTreeLeafPage *recipient) {
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveFirstToEndOf(BPlusTreeLeafPage *recipient, const KeyType &middle_key,
+                                                  BufferPoolManager *buffer_pool_manager) {
   auto first_item = GetItem(0);
   recipient->CopyLastFrom(first_item);
   auto items = GetItems();
   std::memmove(items, items + 1, GetSize() - 1);
   IncreaseSize(-1);
+
+  // Update parent's separator_key
+  page_id_t parent_id = GetParentPageId();
+  auto parent_page = buffer_pool_manager->FetchPage(parent_id);
+  auto parent = reinterpret_cast<B_PLUS_TREE_LEAF_PARENT_TYPE *>(parent_page->GetData());
+  int value_index = parent->ValueIndex(GetPageId());
+  parent->SetKeyAt(value_index, KeyAt(0));
+  buffer_pool_manager->UnpinPage(parent_id, true);
 }
 
 /*
@@ -282,14 +291,25 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyLastFrom(const MappingType &item) {
  * Remove the last key & value pair from this page to "recipient" page.
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveLastToFrontOf(BPlusTreeLeafPage *recipient) {
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveLastToFrontOf(BPlusTreeLeafPage *recipient, const KeyType &middle_key,
+                                                   BufferPoolManager *buffer_pool_manager) {
+  assert(GetSize() > GetMinSize());
   int size = GetSize();
   auto last_item = GetItem(size - 1);
   auto reci_items = recipient->GetItems();
+
   // Leave space for recipient
   std::memmove(reci_items + 1, reci_items, recipient->GetSize());
   CopyFirstFrom(last_item);
   IncreaseSize(-1);
+
+  // Update parent's separator_key between *this and recipient
+  auto parent_id = GetParentPageId();
+  auto parent_page = buffer_pool_manager->FetchPage(parent_id);
+  auto parent_node = reinterpret_cast<B_PLUS_TREE_LEAF_PARENT_TYPE *>(parent_page->GetData());
+  auto value_index = parent_node->ValueIndex(recipient->GetPageId());
+  parent_node->SetKeyAt(value_index, last_item.first);
+  buffer_pool_manager->UnpinPage(parent_id, true);
 }
 
 /*

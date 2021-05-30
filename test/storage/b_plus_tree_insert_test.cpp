@@ -44,8 +44,9 @@ TEST(BPlusTreeTests, InsertTest1) {
     index_key.SetFromInteger(key);
     // std::cout << "index_key: " << index_key << std::endl;
     tree.Insert(index_key, rid, transaction);
+    tree.Print(bpm);
+    std::cout << "====================" << std::endl;
   }
-  // tree.Print(bpm);
 
   // std::string outf;
   // tree.Draw(bpm, outf);

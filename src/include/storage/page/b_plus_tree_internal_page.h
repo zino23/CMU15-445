@@ -62,13 +62,14 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
   // Helper functions
   MappingType *GetItems() { return items_; }
-  bool IsFull() { return GetSize() >= GetMaxSize(); }
+  bool IsFull() { return GetSize() > GetMaxSize(); }
   // Note: internal node's IsHalfFull definition is different from leaf node cos leaf node's sibling pointer is stored
   // in header. So to make leaf node at least half full, GetSize() >= GetMaxSize() / 2 is enough
-  bool IsHalfFull() { return GetSize() >= (GetMaxSize() + 1) / 2; }
+  bool IsHalfFull() { return GetSize() >= GetMinSize(); }
 
  private:
   void CopyNFrom(MappingType *items, int size, BufferPoolManager *buffer_pool_manager);
+  void CopyHalfFrom(MappingType *items, int size, BufferPoolManager *buffer_pool_manager);
   void CopyLastFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
   void CopyFirstFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
 
