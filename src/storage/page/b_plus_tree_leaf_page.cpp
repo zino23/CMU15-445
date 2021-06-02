@@ -212,7 +212,7 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(const KeyType &key, const 
   // Check the key is equal to the one we want to delete
   if (key_index < GetSize() && comparator(key, KeyAt(key_index)) == 0) {
     int st = key_index + 1;
-    int size_moved = GetSize() - st + 1;
+    int size_moved = GetSize() - 1 - st + 1;
     auto items = GetItems();
     std::memmove(items + key_index, items + st, sizeof(MappingType) * size_moved);
     IncreaseSize(-1);

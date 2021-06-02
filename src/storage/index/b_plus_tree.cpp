@@ -143,9 +143,9 @@ bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, 
 
   // Case 2: full, need to split
   LeafPage *new_node = Split(leaf_node);
-  // TODO(Q): update next page id
-  new_node->SetNextPageId(leaf_node->GetNextPageId());
-  leaf_node->SetNextPageId(new_node->GetPageId());
+  // TODO(Q): timing of update next page id? here or MoveHalfTo
+  // new_node->SetNextPageId(leaf_node->GetNextPageId());
+  // leaf_node->SetNextPageId(new_node->GetPageId());
 
   // Insert new_node into leaf_node's parent. The separator key is new_node's first key
   InsertIntoParent(leaf_node, new_node->KeyAt(0), new_node);
@@ -433,6 +433,12 @@ bool BPLUSTREE_TYPE::AdjustRoot(BPlusTreePage *old_root_node) {
   if (!old_root_node->IsLeafPage() && old_root_node->GetSize() == 1) {
     auto old_internal_root_node = reinterpret_cast<InternalPage *>(old_root_node);
     root_page_id_ = static_cast<page_id_t>(old_internal_root_node->RemoveAndReturnOnlyChild());
+    auto new_root_page = buffer_pool_manager_->FetchPage(root_page_id_);
+    auto new_root_node = reinterpret_cast<BPlusTreePage *>(new_root_page->GetData());
+    new_root_node->SetParentPageId(INVALID_PAGE_ID);
+    buffer_pool_manager_->UnpinPage(root_page_id_, true);
+
+    // Update root page id in header page
     UpdateRootPageId(false);
     return true;
     // Note: type of the only child node of old_root_node does not need to be changed, i.e. if it is leaf, then stay

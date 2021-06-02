@@ -71,7 +71,6 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
     page_table_[page_id] = frame_id;
     // increment pin count, since the frame is chosen from free list, it cannot be in replacer
     IncrementPinCount(frame_id);
-    replacer_->Pin(frame_id);
     return target_page;
   }
 

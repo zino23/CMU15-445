@@ -216,7 +216,8 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Remove(int index) {
  */
 INDEX_TEMPLATE_ARGUMENTS
 ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::RemoveAndReturnOnlyChild() {
-  // Don't bother change size cos this page will be deleted
+  // Will only be called when the root is internal and has only one item whose key is invalid
+  assert(GetSize() == 1);
   return ValueAt(0);
 }
 /*****************************************************************************
@@ -289,7 +290,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveFirstToEndOf(BPlusTreeInternalPage *rec
   IncreaseSize(-1);
   // Reorganize pairs in this node
   auto items = GetItems();
-  memmove(items, items + 1, sizeof(MappingType) * GetSize());
+  std::memmove(items, items + 1, sizeof(MappingType) * GetSize());
   // Update middle_key in parent node
   auto parent_id = GetParentPageId();
   auto parent_page = buffer_pool_manager->FetchPage(parent_id);
