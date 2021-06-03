@@ -45,11 +45,12 @@ class ReaderWriterLatch {
     while (writer_entered_) {
       // This is tricky, we should put this thread in reader_ instead of writer_ cos when releasing writer lock, we will
       // wake up all threads in reader_
+      // Note: the effect of this is there is at most 1 writer thread in writer_
       reader_.wait(latch);
     }
     writer_entered_ = true;
     while (reader_count_ > 0) {
-      // There is at most 1 writer thread in writer_
+      // Block subsequent readers and writers
       writer_.wait(latch);
     }
   }
@@ -86,7 +87,6 @@ class ReaderWriterLatch {
     reader_count_--;
     if (writer_entered_) {
       if (reader_count_ == 0) {
-        // If more than one threads is waiting
         writer_.notify_one();
       }
     } else {
@@ -106,11 +106,6 @@ class ReaderWriterLatch {
 };
 
 class ReaderWriterLatchPreferReader {
-  uint32_t reader_count_{0};
-  using mutex_t = std::mutex;
-  mutex_t reader_lock_;
-  mutex_t writer_lock_;
-
  public:
   ReaderWriterLatchPreferReader() = default;
 
@@ -134,6 +129,12 @@ class ReaderWriterLatchPreferReader {
 
   void WLock() { writer_lock_.lock(); }
   void WUnlock() { writer_lock_.unlock(); }
+
+ private:
+  uint32_t reader_count_{0};
+  using mutex_t = std::mutex;
+  mutex_t reader_lock_;
+  mutex_t writer_lock_;
 };
 
 }  // namespace bustub

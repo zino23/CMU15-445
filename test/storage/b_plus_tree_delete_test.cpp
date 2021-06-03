@@ -201,15 +201,17 @@ TEST(BPlusTreeTests, DeleteTest3) {
     // std::cout << "====================" << std::endl;
   }
 
-  tree.Print(bpm);
-  std::cout << "====================" << std::endl;
+  // tree.Print(bpm);
+  // std::cout << "====================" << std::endl;
 
   std::vector<int64_t> remove_keys = {4, 5, 2, 3, 1, 6, 7};
   for (auto key : remove_keys) {
     index_key.SetFromInteger(key);
     tree.Remove(index_key, transaction);
-    tree.Print(bpm);
-    std::cout << "====================" << std::endl;
+    // if (key != 7) {
+    //   std::cout << "=========" << " After Delete " << index_key << " ===============" << std::endl;
+    //   tree.Print(bpm);
+    // }
   }
 
   bpm->UnpinPage(HEADER_PAGE_ID, true);

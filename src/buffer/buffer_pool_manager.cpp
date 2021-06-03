@@ -47,6 +47,7 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
   // return a pointer to P.
 
   // 1. Check is the page is in the memory
+  std::lock_guard<std::mutex> guard(latch_);
   auto page_it = page_table_.find(page_id);
 
   if (page_it != page_table_.end()) {
@@ -59,7 +60,6 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
   }
 
   // 1.2 Not exist, find a free slot in the free_list_
-  std::lock_guard<std::mutex> guard(latch_);
   if (!free_list_.empty()) {
     // just fetch the first free slot
     auto frame_id = free_list_.front();
@@ -100,6 +100,7 @@ Page *BufferPoolManager::FetchPageImpl(page_id_t page_id) {
 
 bool BufferPoolManager::UnpinPageImpl(page_id_t page_id, bool is_dirty) {
   // does not need to check if page id is valid cause if it is not valid it will not be stored on page table anyway
+  std::lock_guard<std::mutex> guard(latch_);
   if (page_table_.find(page_id) != page_table_.end()) {
     auto frame_id = page_table_[page_id];
     auto page = static_cast<Page *>(GetPages() + frame_id);
@@ -121,7 +122,7 @@ bool BufferPoolManager::UnpinPageImpl(page_id_t page_id, bool is_dirty) {
 bool BufferPoolManager::FlushPageImpl(page_id_t page_id) {
   // Make sure you call DiskManager::WritePage!
 
-  // TODO(improve) may not need to check invalid page id
+  // TODO(IMPORTANT): FlushPageImpl may be called in FetchPageImpl, so latch_ is already acquired
   if (page_id == INVALID_PAGE_ID || page_table_.find(page_id) == page_table_.end()) {
     return false;
   }
@@ -209,6 +210,7 @@ bool BufferPoolManager::DeletePageImpl(page_id_t page_id) {
   // using the page.
   // 3.   Otherwise, P can be deleted. Remove P from the page table, reset its
   // metadata and return it to the free list.
+  std::lock_guard<std::mutex> guard(latch_);
 
   auto page_it = page_table_.find(page_id);
   if (page_it == page_table_.end()) {
@@ -222,7 +224,6 @@ bool BufferPoolManager::DeletePageImpl(page_id_t page_id) {
   }
   page_table_.erase(page_id);
   ResetMetadata(frame_id);
-  std::lock_guard<std::mutex> guard(latch_);
   free_list_.emplace_back(frame_id);
   // no need to call replacer_->Pin() cause when a page is pinned to a frame in free_list_, Pin() will be called then
   return true;
@@ -230,6 +231,7 @@ bool BufferPoolManager::DeletePageImpl(page_id_t page_id) {
 
 void BufferPoolManager::FlushAllPagesImpl() {
   // TODO(question): what to do with pinned pages, loop or don't touch it
+  std::lock_guard<std::mutex> guard(latch_);
 
   // loop through page table
   for (auto x : page_table_) {
