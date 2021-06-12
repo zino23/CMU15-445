@@ -32,6 +32,8 @@ class Schema {
   static Schema *CopySchema(const Schema *from, const std::vector<uint32_t> &attrs) {
     std::vector<Column> cols;
     cols.reserve(attrs.size());
+    // attrs: key attributes that store the index of the columns
+    // e.g. attrs = {0, 2} => indexes will be constructed based on column 0 and colmn 2
     for (const auto i : attrs) {
       cols.emplace_back(from->columns_[i]);
     }

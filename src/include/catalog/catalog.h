@@ -61,30 +61,40 @@ class Catalog {
  public:
   /**
    * Creates a new catalog object.
-   * @param bpm the buffer pool manager backing tables created by this catalog
-   * @param lock_manager the lock manager in use by the system
-   * @param log_manager the log manager in use by the system
+   * @param bpm: the buffer pool manager backing tables created by this catalog
+   * @param lock_manager: the lock manager in use by the system
+   * @param log_manager: the log manager in use by the system
    */
   Catalog(BufferPoolManager *bpm, LockManager *lock_manager, LogManager *log_manager)
       : bpm_{bpm}, lock_manager_{lock_manager}, log_manager_{log_manager} {}
 
   /**
    * Create a new table and return its metadata.
-   * @param txn the transaction in which the table is being created
-   * @param table_name the name of the new table
-   * @param schema the schema of the new table
+   * @param txn: the transaction in which the table is being created
+   * @param table_name: the name of the new table
+   * @param schema: the schema of the new table
    * @return a pointer to the metadata of the new table
    */
   TableMetadata *CreateTable(Transaction *txn, const std::string &table_name, const Schema &schema) {
     BUSTUB_ASSERT(names_.count(table_name) == 0, "Table names should be unique!");
-    return nullptr;
+    table_oid_t table_oid = GetNextTblOid();
+    auto table_heap = std::make_unique<TableHeap>(bpm_, lock_manager_, log_manager_, txn);
+    auto table_metadata = std::make_unique<TableMetadata>(schema, table_name, std::move(table_heap), table_oid);
+    tables_.insert({table_oid, std::move(table_metadata)});
+    names_.insert({table_name, table_oid});
+    IncrementTblOid();
+    return tables_[table_oid].get();
   }
 
   /** @return table metadata by name */
-  TableMetadata *GetTable(const std::string &table_name) { return nullptr; }
+  // We need to return by name cos oid is known only to DBMS itself
+  TableMetadata *GetTable(const std::string &table_name) {
+    table_oid_t table_oid = names_.at(table_name);
+    return GetTable(table_oid);
+  }
 
   /** @return table metadata by oid */
-  TableMetadata *GetTable(table_oid_t table_oid) { return nullptr; }
+  TableMetadata *GetTable(table_oid_t table_oid) { return tables_[table_oid].get(); }
 
   /**
    * Create a new index, populate existing data of the table and return its metadata.
@@ -101,14 +111,33 @@ class Catalog {
   IndexInfo *CreateIndex(Transaction *txn, const std::string &index_name, const std::string &table_name,
                          const Schema &schema, const Schema &key_schema, const std::vector<uint32_t> &key_attrs,
                          size_t keysize) {
-    return nullptr;
+    index_oid_t index_oid = GetNextIndexOid();
+    auto index_metadata = new IndexMetadata(index_name, table_name, &schema, key_attrs);
+    auto index = std::make_unique<BPLUSTREE_INDEX_TYPE>(index_metadata, bpm_);
+    auto index_info =
+        std::make_unique<IndexInfo>(key_schema, index_name, std::move(index), index_oid, table_name, keysize);
+    indexes_.insert({index_oid, std::move(index_info)});
+    index_names_[table_name].insert({index_name, index_oid});
+    IncrementIndexOid();
+    return indexes_[index_oid].get();
   }
 
-  IndexInfo *GetIndex(const std::string &index_name, const std::string &table_name) { return nullptr; }
+  IndexInfo *GetIndex(const std::string &index_name, const std::string &table_name) {
+    index_oid_t index_oid = index_names_.at(table_name).at(index_name);
+    return GetIndex(index_oid);
+  }
 
-  IndexInfo *GetIndex(index_oid_t index_oid) { return nullptr; }
+  IndexInfo *GetIndex(index_oid_t index_oid) { return indexes_[index_oid].get(); }
 
   std::vector<IndexInfo *> GetTableIndexes(const std::string &table_name) { return std::vector<IndexInfo *>(); }
+
+  table_oid_t GetNextTblOid() { return next_table_oid_; }
+
+  index_oid_t GetNextIndexOid() { return next_index_oid_; }
+
+  void IncrementTblOid() { next_table_oid_++; }
+
+  void IncrementIndexOid() { next_index_oid_++; }
 
  private:
   [[maybe_unused]] BufferPoolManager *bpm_;

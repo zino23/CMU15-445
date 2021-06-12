@@ -104,6 +104,8 @@ class Index {
  public:
   explicit Index(IndexMetadata *metadata) : metadata_(metadata) {}
 
+  Index() = default;
+
   virtual ~Index() { delete metadata_; }
 
   // Return the metadata object associated with the index
