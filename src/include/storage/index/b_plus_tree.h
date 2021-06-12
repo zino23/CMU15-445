@@ -104,21 +104,9 @@ class BPlusTree {
 
   bool AdjustRoot(BPlusTreePage *node);
 
-  void LockRoot() { root_page_mutex_.lock(); }
-
-  void UnlockRoot() { root_page_mutex_.unlock(); }
-
   void AcquireLatchOnPage(Page *page, Transaction *transaction, Operation op);
 
   void ReleaseLatchedPages(Transaction *transaction, Operation op, bool is_dirty);
-
-  void LockPage(Page *page, Transaction *txn, Operation op);
-
-  void UnlockPage(Page *page, Transaction *txn, Operation op);
-
-  void UnlockAllPage(Transaction *txn, Operation op);
-
-  void UnlockParentPage(Page *page, Transaction *txn, Operation op);
 
   void UpdateRootPageId(int insert_record = 0);
 

@@ -56,7 +56,7 @@ TEST(BufferPoolManagerTest, BinaryDataTest) {
   // Scenario: We should be able to create new pages until we fill up the buffer pool.
   for (size_t i = 1; i < buffer_pool_size; ++i) {
     EXPECT_NE(nullptr, bpm->NewPage(&page_id_temp));
-    printf("page id: %d\n", page_id_temp);
+    // printf("page id: %d\n", page_id_temp);
   }
 
   // Scenario: Once the buffer pool is full, we should not be able to create any new pages.
@@ -68,9 +68,9 @@ TEST(BufferPoolManagerTest, BinaryDataTest) {
   // there would still be one cache frame left for reading page 0.
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(true, bpm->UnpinPage(i, true));
-    printf("replacer pool size: %zu\n", bpm->GetReplacerSize());
+    // printf("replacer pool size: %zu\n", bpm->GetReplacerSize());
     bpm->FlushPage(i);
-    printf("bpm free list size: %zu\n", bpm->GetFreeListSize());
+    // printf("bpm free list size: %zu\n", bpm->GetFreeListSize());
   }
   for (int i = 0; i < 5; ++i) {
     EXPECT_NE(nullptr, bpm->NewPage(&page_id_temp));
@@ -119,11 +119,11 @@ TEST(BufferPoolManagerTest, SampleTest) {
   }
 
   // check page id and pin count
-  for (size_t i = 0; i < buffer_pool_size; i++) {
-    frame_id_t frame_id = static_cast<frame_id_t>(i);
-    auto page = static_cast<Page *>(bpm->GetPages() + frame_id);
-    std::cout << "page " << page->GetPageId() << " pin count: " << page->GetPinCount() << std::endl;
-  }
+  // for (size_t i = 0; i < buffer_pool_size; i++) {
+  //   frame_id_t frame_id = static_cast<frame_id_t>(i);
+  //   auto page = static_cast<Page *>(bpm->GetPages() + frame_id);
+  //   std::cout << "page " << page->GetPageId() << " pin count: " << page->GetPinCount() << std::endl;
+  // }
 
   // Scenario: After unpinning pages {0, 1, 2, 3, 4} and pinning another 4 new pages,
   // there would still be one buffer page left for reading page 0.

@@ -56,18 +56,18 @@ bool BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   }
 
   // Find the leaf that contains the key
-  auto leaf_page = reinterpret_cast<LeafPage *>(FindLeafPage(key, transaction, Operation::SEARCH)->GetData());
+  auto leaf_node = reinterpret_cast<LeafPage *>(FindLeafPage(key, transaction, Operation::SEARCH)->GetData());
   ValueType value;
-  bool found = leaf_page->Lookup(key, &value, comparator_);
+  bool found = leaf_node->Lookup(key, &value, comparator_);
   if (found) {
     result->push_back(value);
   }
 
   if (transaction != nullptr) {
-    // Only target leaf page is latched at this point
+    // Only target leaf page is latched at this point, and it will be unpinned in ReleaseLatchedPages
     ReleaseLatchedPages(transaction, Operation::SEARCH, false);
   } else {
-    buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), false);
+    buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), false);
   }
 
   return found;
@@ -105,6 +105,7 @@ bool BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
  */
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::StartNewTree(const KeyType &key, const ValueType &value) {
+  // No need acquire latch on this new page cos root_page_mutex_ is held, so GetValue and Remove are all blocked
   auto root_page = buffer_pool_manager_->NewPage(&root_page_id_);
   if (root_page == nullptr) {
     throw Exception(ExceptionType::OUT_OF_MEMORY, "Out of memory!");
@@ -144,7 +145,11 @@ bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, 
 
   // Case 1: not full after insert
   if (!leaf_node->IsFull()) {
-    buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), true);
+    if (transaction != nullptr) {
+      ReleaseLatchedPages(transaction, Operation::INSERT, inserted);
+    } else {
+      buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), inserted);
+    }
     return inserted;
   }
 
@@ -157,12 +162,14 @@ bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, 
   // Insert new_node into leaf_node's parent. The separator key is new_node's first key
   InsertIntoParent(leaf_node, new_node->KeyAt(0), new_node);
   // TODO(IMPORTANT): timing of unpin the new splitted page
+  // Note: new_node does not hold a latch, just unpin it
   buffer_pool_manager_->UnpinPage(new_node->GetPageId(), true);
 
   if (transaction != nullptr) {
     ReleaseLatchedPages(transaction, Operation::INSERT, inserted);
+  } else {
+    buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), true);
   }
-  buffer_pool_manager_->UnpinPage(leaf_node->GetPageId(), true);
   return inserted;
 }
 
@@ -339,8 +346,10 @@ bool BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
   // Coalesce
   if (coalesce) {
     bool delete_parent = Coalesce(&sibling_node, &node, &parent_node, node_index);
-    buffer_pool_manager_->UnpinPage(parent_id, true);
     if (delete_parent) {
+      // Parent page does not hold a latch, so need to unpin it in order to delete either in ReleaseLatchedPages or in
+      // no transaction case
+      buffer_pool_manager_->UnpinPage(parent_id, true);
       if (transaction != nullptr) {
         transaction->AddIntoDeletedPageSet(parent_id);
       } else {
@@ -524,6 +533,8 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::end() {
 /*****************************************************************************
  * UTILITIES AND DEBUG
  *****************************************************************************/
+// Acquire latch on *page, and release pages from parent all the way up to root if *page is safe, i.e. any changes from
+// *page and below will not affect *page's parent and the above pages
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::AcquireLatchOnPage(Page *page, Transaction *transaction, Operation op) {
   if (op == Operation::SEARCH) {
@@ -548,6 +559,7 @@ void BPLUSTREE_TYPE::AcquireLatchOnPage(Page *page, Transaction *transaction, Op
   transaction->AddIntoPageSet(page);
 }
 
+// Unpin and delete pages that are meant to be deleted
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::ReleaseLatchedPages(Transaction *transaction, Operation op, bool is_dirty) {
   auto locked_pages = transaction->GetPageSet();
