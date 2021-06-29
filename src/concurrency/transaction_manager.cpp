@@ -106,6 +106,13 @@ void TransactionManager::Abort(Transaction *txn) {
   global_txn_latch_.RUnlock();
 }
 
+Transaction *TransactionManager::GetTransaction(txn_id_t txn_id) {
+  assert(TransactionManager::txn_map.find(txn_id) != TransactionManager::txn_map.end());
+  auto *res = TransactionManager::txn_map[txn_id];
+  assert(res != nullptr);
+  return res;
+}
+
 void TransactionManager::BlockAllTransactions() { global_txn_latch_.WLock(); }
 
 void TransactionManager::ResumeTransactions() { global_txn_latch_.WUnlock(); }

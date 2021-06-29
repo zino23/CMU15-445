@@ -31,6 +31,9 @@ class SeqScanPlanNode : public AbstractPlanNode {
   SeqScanPlanNode(const Schema *output, const AbstractExpression *predicate, table_oid_t table_oid)
       : AbstractPlanNode(output, {}), predicate_{predicate}, table_oid_(table_oid) {}
 
+  // TODO(silentroar): by default SeqScanPlanNode does not have children nodes, it may well not be the case. Add a
+  // constructor that takes children nodes
+
   PlanType GetType() const override { return PlanType::SeqScan; }
 
   /** @return the predicate to test tuples against; tuples should only be returned if they evaluate to true */

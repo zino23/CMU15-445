@@ -1,7 +1,7 @@
 BasedOnStyle: Google
 DerivePointerAlignment: false
 PointerAlignment: Right
-ColumnLimit: 120
+ColumnLimit: 110
 AllowShortIfStatementsOnASingleLine: true
 
 # Default for clang-8, changed in later clangs. Set explicitly for forwards

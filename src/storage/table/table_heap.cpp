@@ -137,6 +137,7 @@ void TableHeap::ApplyDelete(const RID &rid, Transaction *txn) {
   // Delete the tuple from the page.
   page->WLatch();
   page->ApplyDelete(rid, txn, log_manager_);
+  // TODO(Q): lock is already released in SHRINKING state
   lock_manager_->Unlock(txn, rid);
   page->WUnlatch();
   buffer_pool_manager_->UnpinPage(page->GetTablePageId(), true);

@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>  // NOLINT
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -36,10 +37,12 @@ class LockManager {
 
   class LockRequest {
    public:
-    LockRequest(txn_id_t txn_id, LockMode lock_mode) : txn_id_(txn_id), lock_mode_(lock_mode), granted_(false) {}
+    LockRequest(txn_id_t txn_id, LockMode lock_mode, bool granted = false)
+        : txn_id_(txn_id), lock_mode_(lock_mode), granted_(granted) {}
 
     txn_id_t txn_id_;
     LockMode lock_mode_;
+    // granted and ungranted request are all on LockRequestQueue
     bool granted_;
   };
 
@@ -47,6 +50,7 @@ class LockManager {
    public:
     std::list<LockRequest> request_queue_;
     std::condition_variable cv_;  // for notifying blocked transactions on this rid
+    // TODO(Q): Only one txn is allowed to upgrade its lock
     bool upgrading_ = false;
   };
 
@@ -71,8 +75,8 @@ class LockManager {
    * [LOCK_NOTE]: For all locking functions, we:
    * 1. return false if the transaction is aborted; and
    * 2. block on wait, return true when the lock request is granted; and
-   * 3. it is undefined behavior to try locking an already locked RID in the same transaction, i.e. the transaction
-   *    is responsible for keeping track of its current locks.
+   * 3. it is undefined behavior to try locking an already locked RID in the same transaction, i.e. the
+   * transaction is responsible for keeping track of its current locks.
    */
 
   /**
@@ -121,7 +125,8 @@ class LockManager {
   /**
    * Checks if the graph has a cycle, returning the newest transaction ID in the cycle if so.
    * @param[out] txn_id if the graph has a cycle, will contain the newest transaction ID
-   * @return false if the graph has no cycle, otherwise stores the newest transaction ID in the cycle to txn_id
+   * @return false if the graph has no cycle, otherwise stores the newest transaction ID in the cycle to
+   * txn_id
    */
   bool HasCycle(txn_id_t *txn_id);
 
@@ -131,13 +136,39 @@ class LockManager {
   /** Runs cycle detection in the background. */
   void RunCycleDetection();
 
+  bool dfs(txn_id_t txn_id, txn_id_t *aborted_txn_id, std::unordered_set<txn_id_t> &visited,
+           std::vector<txn_id_t> &cycle, std::unordered_set<txn_id_t> &in_cycle);
+
+  // Check if txn is in the right state to acquire lock
+  bool IsTxnValidToLock(Transaction *txn);
+
+  void removeFromVector(std::vector<txn_id_t> &v, txn_id_t txn_id) {
+    for (auto it = v.begin(); it != v.end(); ++it) {
+      if (*it == txn_id) {
+        v.erase(it);
+        break;
+      }
+    }
+  }
+
+  txn_id_t MinUnvisitedTxn(std::unordered_set<txn_id_t> &visited) {
+    txn_id_t min_txn_id = INT_MAX;
+    for (const auto &i : waits_for_) {
+      txn_id_t txn_id = i.first;
+      if (visited.find(txn_id) == visited.end()) {
+        min_txn_id = std::min(min_txn_id, txn_id);
+      }
+    }
+    return min_txn_id;
+  }
+
  private:
   std::mutex latch_;
   std::atomic<bool> enable_cycle_detection_;
   std::thread *cycle_detection_thread_;
 
   /** Lock table for lock requests. */
-  std::unordered_map<RID, LockRequestQueue> lock_table_;
+  std::unordered_map<RID, std::unique_ptr<LockRequestQueue>> lock_table_;
   /** Waits-for graph representation. */
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
 };

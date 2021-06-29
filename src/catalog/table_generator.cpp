@@ -49,18 +49,26 @@ void TableGenerator::FillTable(TableMetadata *info, TableInsertMeta *table_meta)
   uint32_t num_inserted = 0;
   uint32_t batch_size = 128;
   while (num_inserted < table_meta->num_rows_) {
+    // A column is stored as vector<Value> cos each column's type may be different
     std::vector<std::vector<Value>> values;
     uint32_t num_values = std::min(batch_size, table_meta->num_rows_ - num_inserted);
     for (auto &col_meta : table_meta->col_meta_) {
+      // Insert a column according to column metadata and the size of each column
+      // MakeValues create a column with real data according to col_meta
       values.emplace_back(MakeValues(&col_meta, num_values));
     }
+    // For each row
     for (uint32_t i = 0; i < num_values; i++) {
       std::vector<Value> entry;
+      // Build entry for each row
+      // The size of an entry is equal to the number of columns
       entry.reserve(values.size());
       for (const auto &col : values) {
+        // i is index of row
         entry.emplace_back(col[i]);
       }
       RID rid;
+      // Insert actual tuple into table_page through Catalog
       bool inserted = info->table_->InsertTuple(Tuple(entry, &info->schema_), &rid, exec_ctx_->GetTransaction());
       BUSTUB_ASSERT(inserted, "Sequential insertion cannot fail");
       num_inserted++;
@@ -118,9 +126,11 @@ void TableGenerator::GenerateTestTables() {
   for (auto &table_meta : insert_meta) {
     // Create Schema
     std::vector<Column> cols{};
+    // The number of columns of the schema is equal to that of each table in insert_meta
     cols.reserve(table_meta.col_meta_.size());
     for (const auto &col_meta : table_meta.col_meta_) {
       if (col_meta.type_ != TypeId::VARCHAR) {
+        // Use column name and type to build a Column
         cols.emplace_back(col_meta.name_, col_meta.type_);
       } else {
         cols.emplace_back(col_meta.name_, col_meta.type_, TEST_VARLEN_SIZE);
